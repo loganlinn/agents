@@ -1,6 +1,6 @@
 ---
-name: summarize
-description: "Fetch a URL or convert a local file (PDF/DOCX/HTML/etc.) into Markdown using `uvx markitdown`, optionally it can summarize"
+name: convert
+description: "Convert a docment/page (PDF/DOCX/HTML/etc) into Markdown using `uvx markitdown`, optionally it can summarize"
 ---
 
 Turn “things” (URLs, PDFs, Word docs, PowerPoints, HTML pages, text files, etc.) into **Markdown** so they can be inspected/quoted/processed like normal text.
@@ -11,6 +11,7 @@ For PDF inputs, use the `markitdown[pdf]` extra (or the wrapper below, which now
 ## When to use
 
 Use this skill when you need to:
+
 - pull down a web page as a document-like Markdown representation
 - convert binary docs (PDF/DOCX/PPTX) into Markdown for analysis
 - quickly produce a short summary of a long document before deeper work
@@ -54,6 +55,7 @@ node to-markdown.mjs <url-or-path> --summary --prompt "Focus on security implica
 ```
 
 This will:
-1) convert to Markdown via `uvx --from 'markitdown[pdf]' markitdown`
-2) write the full Markdown to a temp `.md` file and print its path as a "Hint" line
-3) run `pi --model claude-haiku-4-5` (no-tools, no-session) to summarize using your extra prompt
+
+1. convert to Markdown via `uvx --from 'markitdown[pdf]' markitdown`
+2. write the full Markdown to a temp `.md` file and print its path as a "Hint" line
+3. run `pi --model claude-haiku-4-5` (no-tools, no-session) to summarize using your extra prompt
