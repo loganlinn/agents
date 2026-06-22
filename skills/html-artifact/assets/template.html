@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<title>{{TITLE}}</title>
+<style>
+  /* ============================================================
+     Theme variables — light is default, dark overrides.
+     User preference stored in localStorage as "html-artifact-theme".
+     System preference respected when no override is set.
+     ============================================================ */
+  :root {
+    --bg: #ffffff;
+    --panel: #f7f8fa;
+    --panel-2: #eef1f5;
+    --line: #d9dee4;
+    --text: #1a1f26;
+    --text-strong: #0b0d10;
+    --muted: #5b6472;
+    --accent: #0969da;
+    --green: #1a7f37;
+    --yellow: #9a6700;
+    --red: #cf222e;
+    --purple: #8250df;
+    --shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1117;
+      --panel: #161b22;
+      --panel-2: #1c232d;
+      --line: #2a3441;
+      --text: #e6edf3;
+      --text-strong: #ffffff;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1c232d;
+    --line: #2a3441;
+    --text: #e6edf3;
+    --text-strong: #ffffff;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  a { color: var(--accent); }
+
+  /* ============================================================
+     Toolbar — sticky top, auto-hides in print & markdown view.
+     ============================================================ */
+  .toolbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; justify-content: flex-end; gap: 6px;
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: saturate(160%) blur(8px);
+    -webkit-backdrop-filter: saturate(160%) blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .tb-btn {
+    appearance: none;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; font-family: var(--sans);
+    cursor: pointer; line-height: 1;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .tb-btn:hover { background: var(--panel-2); border-color: var(--muted); }
+  .tb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tb-btn svg { width: 14px; height: 14px; }
+
+  /* ============================================================
+     Layout — slide deck feel, single column, max-width.
+     ============================================================ */
+  .deck { max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; }
+  .slide {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow);
+  }
+  .slide.hero {
+    background: linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) 8%, var(--panel)) 0%,
+      var(--panel) 100%);
+    border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+  }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 10px;
+  }
+
+  h1 {
+    font-size: clamp(22px, 4vw, 32px); font-weight: 700;
+    margin: 0 0 8px; letter-spacing: -0.01em; color: var(--text-strong);
+  }
+  h2 {
+    font-size: clamp(17px, 2.6vw, 20px); font-weight: 650;
+    margin: 0 0 14px; color: var(--text-strong);
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 7px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    flex-shrink: 0;
+  }
+  h3 { font-size: 14px; font-weight: 650; margin: 0 0 6px; color: var(--text-strong); }
+  p  { margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .lede { font-size: 15px; color: var(--muted); margin: 0; max-width: 72ch; }
+
+  /* ============================================================
+     Inline code & pre blocks (with copy button).
+     ============================================================ */
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  :not(pre) > code {
+    background: var(--panel-2); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--line); color: var(--text-strong);
+  }
+  pre {
+    position: relative;
+    margin: 10px 0;
+    padding: 14px 16px; padding-right: 58px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+    overflow-x: auto; font-size: 13px; line-height: 1.55;
+  }
+  pre code { background: transparent; padding: 0; border: 0; color: var(--text); }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    appearance: none; background: var(--panel); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 6px;
+    font-size: 11px; padding: 3px 8px; cursor: pointer;
+    font-family: var(--sans); line-height: 1;
+    opacity: 0; transition: opacity 120ms ease, color 120ms ease;
+  }
+  pre:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+  .copy-btn:hover { color: var(--text-strong); }
+  .copy-btn[data-copied="true"] { color: var(--green); border-color: var(--green); }
+
+  /* ============================================================
+     Component library — cards, grids, tags, tables, flow, details.
+     ============================================================ */
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card.accent-green  { border-left: 3px solid var(--green); }
+  .card.accent-blue   { border-left: 3px solid var(--accent); }
+  .card.accent-yellow { border-left: 3px solid var(--yellow); }
+  .card.accent-red    { border-left: 3px solid var(--red); }
+  .card.accent-purple { border-left: 3px solid var(--purple); }
+
+  ul { margin: 0; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  li::marker { color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 11px;
+       text-transform: uppercase; letter-spacing: 0.05em; }
+  tr:last-child td { border-bottom: none; }
+
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 11px;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+  }
+  .tag.green  { color: var(--green);  border-color: color-mix(in srgb, var(--green) 40%, transparent);  background: color-mix(in srgb, var(--green)  10%, transparent); }
+  .tag.blue   { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .tag.yellow { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 40%, transparent); background: color-mix(in srgb, var(--yellow) 10%, transparent); }
+  .tag.red    { color: var(--red);    border-color: color-mix(in srgb, var(--red)    40%, transparent); background: color-mix(in srgb, var(--red)    10%, transparent); }
+
+  .flow {
+    font-family: var(--mono); font-size: 13px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px 16px; white-space: pre;
+    overflow-x: auto; line-height: 1.55;
+  }
+
+  details {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 14px; margin: 10px 0;
+  }
+  details[open] { padding-bottom: 14px; }
+  summary {
+    cursor: pointer; font-weight: 600; color: var(--text-strong);
+    list-style: none; display: flex; align-items: center; gap: 8px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: "▸"; color: var(--muted); transition: transform 120ms ease;
+    display: inline-block;
+  }
+  details[open] > summary::before { transform: rotate(90deg); }
+
+  .footer {
+    text-align: center; color: var(--muted); font-size: 12px;
+    font-family: var(--mono); margin-top: 24px;
+  }
+
+  /* ============================================================
+     Markdown view — raw <pre> replaces the deck.
+     ============================================================ */
+  .md-view {
+    max-width: 860px; margin: 0 auto; padding: 24px 20px 80px;
+  }
+  .md-view pre {
+    padding: 20px; font-size: 13.5px; line-height: 1.65;
+    white-space: pre-wrap; word-wrap: break-word;
+    max-height: none; padding-right: 58px;
+  }
+
+  /* ============================================================
+     Responsive — collapse grids, tighten padding.
+     ============================================================ */
+  @media (max-width: 720px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .deck { padding: 16px 12px 60px; }
+    .slide { padding: 18px 18px; border-radius: 10px; }
+    pre { font-size: 12px; }
+    table { font-size: 13px; }
+    th, td { padding: 8px 8px; }
+    .tb-btn span.tb-label { display: none; }
+    .tb-btn { padding: 6px 8px; }
+  }
+
+  /* ============================================================
+     Print — PDF export friendly.
+     ============================================================ */
+  @media print {
+    html, body { background: #fff; color: #000; }
+    .toolbar, .copy-btn { display: none !important; }
+    .deck { max-width: 100%; padding: 0; }
+    .slide {
+      background: #fff; border: 1px solid #ccc; box-shadow: none;
+      page-break-inside: avoid; margin-bottom: 10px; border-radius: 6px;
+    }
+    .slide.hero { background: #fff; }
+    .card { background: #fafafa; border-color: #ddd; }
+    .muted { color: #444; }
+    :not(pre) > code { background: #f0f0f0; border-color: #ccc; color: #000; }
+    pre, .flow { background: #f7f7f7; border-color: #ddd; color: #000; }
+    details { background: #fafafa; border-color: #ddd; }
+    details:not([open]) > *:not(summary) { display: block !important; }
+    details { padding-bottom: 14px; }
+    a { color: #000; text-decoration: underline; }
+    h1, h2, h3 { color: #000; }
+    .tag { border-color: #bbb; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     TOOLBAR
+     ============================================================ -->
+<nav class="toolbar" aria-label="Report actions">
+  <button class="tb-btn" data-action="theme" aria-label="Toggle light/dark mode" title="Toggle theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    <span class="tb-label">Theme</span>
+  </button>
+  <button class="tb-btn" data-action="markdown" aria-label="View as markdown" title="View as markdown">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+    <span class="tb-label">Markdown</span>
+  </button>
+  <button class="tb-btn" data-action="print" aria-label="Print or save as PDF" title="Print / PDF">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    <span class="tb-label">Print</span>
+  </button>
+</nav>
+
+<!-- ============================================================
+     DECK — fill slides here.
+     ============================================================ -->
+<main class="deck" id="deck">
+
+  <section class="slide hero">
+    <div class="eyebrow">{{EYEBROW}}</div>
+    <h1>{{TITLE}}</h1>
+    <p class="lede">{{SUBTITLE}}</p>
+  </section>
+
+  {{SLIDES}}
+
+  <div class="footer">{{FOOTER}}</div>
+</main>
+
+<!-- ============================================================
+     MARKDOWN SOURCE — required. Mirrors the deck content.
+     ============================================================ -->
+<script type="text/markdown" id="md-source">
+{{MARKDOWN}}
+</script>
+
+<!-- ============================================================
+     Behavior — vanilla JS, no deps.
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+
+  var THEME_KEY = 'html-artifact-theme';
+  var root = document.documentElement;
+
+  // ---------- Theme toggle ----------
+  function applyStoredTheme() {
+    try {
+      var stored = localStorage.getItem(THEME_KEY);
+      if (stored === 'light' || stored === 'dark') {
+        root.setAttribute('data-theme', stored);
+      }
+    } catch (_) { /* localStorage blocked */ }
+  }
+  function currentTheme() {
+    var attr = root.getAttribute('data-theme');
+    if (attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function toggleTheme() {
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+  }
+  applyStoredTheme();
+
+  // ---------- Copy buttons on <pre> ----------
+  function addCopyButtons() {
+    var pres = document.querySelectorAll('pre');
+    pres.forEach(function (pre) {
+      if (pre.querySelector('.copy-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.type = 'button';
+      btn.textContent = 'Copy';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.addEventListener('click', function () {
+        var code = pre.querySelector('code');
+        var text = (code ? code.innerText : pre.innerText).replace(/^Copy\n?/, '');
+        var done = function () {
+          btn.textContent = 'Copied';
+          btn.setAttribute('data-copied', 'true');
+          setTimeout(function () {
+            btn.textContent = 'Copy';
+            btn.removeAttribute('data-copied');
+          }, 1400);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+        } else {
+          fallbackCopy(text); done();
+        }
+      });
+      pre.appendChild(btn);
+    });
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(ta);
+  }
+
+  // ---------- Markdown view toggle ----------
+  var deck = document.getElementById('deck');
+  var deckHtmlCache = null;
+  function isMdRequested() {
+    var hash = (location.hash || '').toLowerCase();
+    var params = new URLSearchParams(location.search);
+    return hash === '#md' || hash === '#markdown' || params.get('view') === 'md';
+  }
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function showMarkdown() {
+    if (!deck) return;
+    if (deckHtmlCache === null) deckHtmlCache = deck.innerHTML;
+    var src = document.getElementById('md-source');
+    var md = src ? src.textContent.replace(/^\s+|\s+$/g, '') : '(no markdown source embedded)';
+    deck.className = 'md-view';
+    deck.innerHTML = '<pre><code>' + escapeHtml(md) + '</code></pre>';
+    addCopyButtons();
+  }
+  function showHtml() {
+    if (!deck || deckHtmlCache === null) return;
+    deck.className = 'deck';
+    deck.innerHTML = deckHtmlCache;
+    addCopyButtons();
+  }
+  function toggleMarkdown() {
+    if (deck.classList.contains('md-view')) {
+      history.replaceState(null, '', location.pathname + location.search);
+      showHtml();
+    } else {
+      history.replaceState(null, '', location.pathname + location.search + '#md');
+      showMarkdown();
+    }
+  }
+  window.addEventListener('hashchange', function () {
+    if (isMdRequested()) showMarkdown(); else showHtml();
+  });
+
+  // ---------- Toolbar wiring ----------
+  document.querySelectorAll('.tb-btn').forEach(function (btn) {
+    var action = btn.getAttribute('data-action');
+    btn.addEventListener('click', function () {
+      if (action === 'theme') toggleTheme();
+      else if (action === 'markdown') toggleMarkdown();
+      else if (action === 'print') window.print();
+    });
+  });
+
+  // ---------- Init ----------
+  addCopyButtons();
+  if (isMdRequested()) showMarkdown();
+})();
+</script>
+</body>
+</html>
