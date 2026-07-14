@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude PR Review Loop"
+  short_description: "Run claude[bot] PR review loops"
+  default_prompt: "Use $claude-pr-review to request a claude[bot] PR review, address actionable feedback, and reply."
