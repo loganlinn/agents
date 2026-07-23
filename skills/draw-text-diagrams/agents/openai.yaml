@@ -1,0 +1,4 @@
+interface:
+  display_name: "Draw Text Diagrams"
+  short_description: "Design dense, coherent terminal-friendly diagrams"
+  default_prompt: "Use $draw-text-diagrams to turn this system description into a compact terminal-friendly diagram."
