@@ -119,19 +119,58 @@ Assign a disposition to every open item, with a one-line reason, **before** chan
 
 ### 5. Land the Apply set
 
-- `hasSuggestion` threads carry the reviewer's exact patch — apply it verbatim when it is right, and treat rewriting it as a divergence to note in the reply.
-- Verify each touched package with the repo's documented single verification command (in gamma: `cd packages/<pkg> && yarn lint:fix`; for Terraform roots: `terraform fmt`, and `terraform validate` where already initialized). If nothing can verify a change, land it and mark it `unverified` in the report.
+Record `git rev-parse HEAD` **before your first commit** — step 6 needs it as `--since`.
+
+- `hasSuggestion` threads carry the reviewer's exact patch — apply it verbatim when it is right. Rewriting it is a **divergence**: note it in the reply and carry the thread id into step 6.
+- Verify each touched package with the repo's documented single verification command (in gamma: `cd packages/<pkg> && yarn lint:fix`). For Terraform roots, `fmt` proves formatting, not behaviour — attempt `terraform plan` (with `-var-file=staging.tfvars` for `packages/server/terraform/daytona`) so the change is actually verifiable. A root that cannot init or lacks credentials stays unverified, which step 6 treats as a stop.
 - Stage by explicit path — `git add <file> …` — so the user's other working-tree changes stay out. Re-run preflight before committing and confirm the staged set is exactly the files you edited.
 - Commit in the repo's message convention. One commit per concern; each thread's reply cites the sha that contains its fix.
-- Push with plain `git push`.
 
-Guardrails:
+**Rewrite history before you cite it, never after.** Step 3 is where rebasing and restacking belong — no sha is published yet, so rewriting there costs nothing. From your first commit onward the branch is append-only: no amend, no rebase, no force-push, because the replies you are about to post cite shas.
 
-- **Rewrite history before you cite it, never after.** Step 3 is where rebasing and restacking belong — no sha is published yet, so rewriting there costs nothing. From your first commit onward the branch is append-only: no amend, no rebase, no force-push, because the replies you are about to post cite shas.
+### 6. Assess regression risk, then push
+
+Nothing has left the machine yet. This is the last reversible moment: a push starts CI, is visible to reviewers, and is immediately followed by replies that turn these shas into permanent references.
+
+```bash
+"$S/risk.sh" --since <sha-from-step-5> \
+  --changed-files '<collect.sh .changedFiles>' \
+  --verification <passed|failed|none> \
+  [--diverged <thread-id,...>]
+```
+
+The verdict is mechanical — `high` iff a hard trigger fired. Size never stops a push on its own; it is reported. Do not talk yourself past a trigger, and do not re-run with softer inputs to get a friendlier verdict.
+
+| `level`    | Action                                                     |
+| ---------- | ---------------------------------------------------------- |
+| `low`      | `git push`, carry the verdict into the report               |
+| `elevated` | `git push`, and name the size notes in the report           |
+| `high`     | **stop before pushing** — ask                               |
+
+On `high`, push nothing, reply to nothing, resolve nothing. Present the triggers and ask whether the user wants independent review of your changes, offering:
+
+- `/codex:adversarial-review --base <sha-from-step-5> --background`
+- `/security-review` — when the batch touches auth, secrets, IAM, or `security.md`
+- the `code-review` skill — note that its `docs/agents/issue-tracker.md` prerequisite is missing in gamma, so it needs setup first
+- push anyway
+
+Because the gate sits after committing, `--base <sha-from-step-5>` scopes any reviewer to exactly your own work. Findings come back through the same four dispositions. **The gate re-arms at most once** — a second `high` verdict stops and reports rather than looping.
+
+**Self-repair is allowed only for regressions you introduced.** All four must hold:
+
+1. it is attributable to a commit **you made this turn** — not pre-existing, not the user's, not from the step 3 rebase
+2. it is **verified**, not suspected: reproduced, or named by a failing check
+3. the fix clears the **Apply** bar — exactly one reasonable fix, and you can say why it is the only one
+4. it stays inside the PR's changed files
+
+Then fix it in a new commit, re-run `risk.sh`, and record it in the report. Anything failing those four gets no speculative fix: prefer `git revert` of the offending commit — append-only, so still legal here — and move that thread to **Escalate**, keeping the rest of the batch shippable. If the revert is not clean, stop before pushing and report. One self-repair round only; a second verified self-introduced regression means the batch is not understood well enough to push.
+
+Push guardrails:
+
 - A rejected push means the branch moved while you worked. Stop before replying, leave the threads as they were, and report it.
 - On a stacked branch, push this one plainly and **report** children needing restack rather than restacking them.
 
-### 6. Close the loops
+### 7. Close the loops
 
 ```bash
 # Apply — fixed in a commit
@@ -147,7 +186,7 @@ Use `--note` when the fix diverges from what the reviewer suggested. Resolve onl
 
 For feedback in a review summary body or top-level comment, acknowledge with a single `gh pr comment` in the same form.
 
-### 7. Re-request review
+### 8. Re-request review
 
 For each reviewer whose latest review is `CHANGES_REQUESTED`, once every thread they authored is resolved and none awaits a pushback draft:
 
@@ -157,12 +196,12 @@ gh api --method POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'revi
 
 REST adds to the reviewer set. (The `requestReviews` GraphQL mutation replaces it unless you pass `union: true`.) A few reviewer logins are rejected here; note the failure rather than retrying.
 
-### 8. Report
+### 9. Report
 
 One message. No preamble, no recap of the diff, no narration of steps taken. Lead with what the user must act on; everything closed gets one line.
 
 ```
-**PR #<n> — <title>** · <mode>
+**PR #<n> — <title>** · <mode> · risk: <low|elevated|high>
 <x>/<y> threads closed. <a> need your call, <b> pushback drafted.
 
 ## Stack
@@ -170,6 +209,11 @@ One message. No preamble, no recap of the diff, no narration of steps taken. Lea
 |----|--------|-----------|-----------|--------|
 | #<n> | <head> | 2 | 2 | changes requested (dinedal) |
 | → #<n> | <head> | 1 | 0 | approved |
+
+## Risk — not pushed
+Triggered by: <hard trigger, verbatim from risk.sh>
+Self-repaired: <what regression, how verified, which commit>
+Independent review? /codex:adversarial-review --base <sha> · /security-review · code-review skill · push anyway
 
 ## Needs your call
 1. **<file>:<line>** — <claim in one line> · <link>
@@ -191,9 +235,9 @@ One message. No preamble, no recap of the diff, no narration of steps taken. Lea
 - <file>:<line> — you replied <date>
 
 ## State
-Base · how the worktree synced · stacking tool · children needing restack · conflicts · failures
+Base · how the worktree synced · what verified each touched root/package · stacking tool · children needing restack · conflicts · failures
 
 Reply `post` to send the pushback drafts.
 ```
 
-Rules: omit empty sections. Mark the target PR with `→` in the stack table, and include the table only when the stack has more than one PR. Every claim names file, line, and what you checked — no thread is called handled without saying how. In Status mode, only the stack table, the outstanding items, and State apply.
+Rules: omit empty sections — `## Risk` appears only when the verdict is `high` or a self-repair happened, and its "not pushed" title drops once the user has chosen to push. Mark the target PR with `→` in the stack table, and include the table only when the stack has more than one PR. Every claim names file, line, and what you checked — no thread is called handled without saying how. In Status mode, only the stack table, the outstanding items, and State apply.
