@@ -1,17 +1,21 @@
 ---
 name: address-pr-feedback
-description: Report or close out PR review feedback across a branch stack. Reports outstanding feedback and review-request status read-only; on an explicit request to address feedback, also lands the fixes that need no judgment, replies, resolves, re-requests review, and reports what needs the user's call. Use when the user asks what review feedback is outstanding on a PR or stack, or asks to address, handle, or clear PR review comments.
+description: Report or close out PR review feedback across a branch stack. Reports outstanding feedback and review-request status read-only; closes the loops (reply, resolve, re-request) for fixes the user made themselves; and on an explicit request to address feedback, also lands the fixes that need no judgment. Use when the user asks what review feedback is outstanding on a PR or stack, says they have fixed threads and wants them closed out, or asks to address, handle, or clear PR review comments.
 ---
 
 # Address PR feedback
 
-Two modes. Pick one before doing anything, and say which you picked.
+Three modes. Pick one before you do anything, and say which mode you picked.
 
 **Status** — the user asked a question: what is outstanding, where does the stack stand, is anything blocking. Read-only. Run steps 1–2, print the report, stop. No commits, no replies, no resolves, no rebase.
+
+**Close** — the user fixed threads themselves and wants the bookkeeping done: "close the loops", "I fixed these", "mark these addressed". Runs steps 1–2, the mapping stage in step 7, then steps 7–8. Never edits, commits, rebases, or pushes, so it needs no risk gate.
 
 **Address** — the user explicitly asked to address, handle, fix, or clear feedback. Runs every step.
 
 A question is Status. Ambiguity is Status. Address needs an actual instruction to change something — the cost of guessing wrong is public comments on someone else's PR and rewritten local history, so the quiet mode is the default.
+
+Most review feedback needs the author's judgment, so **Close** is the common case, not the rare one. The skill earns its keep on the threads it cannot fix by doing the paperwork for the ones the user fixed.
 
 ## Standing authorization
 
@@ -54,12 +58,10 @@ Threads where the user already replied last (`awaitingReviewer: true`) are the r
 
 ## Steps
 
-Resolve the script directory once:
+Set `S` to the absolute path of the `scripts` directory next to this file:
 
 ```bash
-for d in ~/.claude/skills ~/.agents/skills ~/src/github.com/loganlinn/agents/skills; do
-  [ -d "$d/address-pr-feedback/scripts" ] && S="$d/address-pr-feedback/scripts" && break
-done
+S="<address-pr-feedback-skill-directory>/scripts"
 ```
 
 ### 1. Collect
@@ -101,13 +103,13 @@ You act on the target PR only. Sibling PRs are situational awareness: each lives
 
 Fetches origin, then reports gaps to base and upstream, `rebaseable`, `blockers`, and a structured `sync` object. It returns an **action name and ref fields, never a command string** — ref names are attacker-controlled on a fork PR and git permits `$`, `(`, and `)` in them. Refs outside a safe charset are refused outright and land in `unsafeRefNames`.
 
-| `sync.action`          | What to run                                                                 |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `none`                 | nothing                                                                       |
-| `fast-forward`         | `git merge --ff-only <sync.upstreamRef>` — no merge commit                    |
-| `rebase-onto-upstream` | `git pull --rebase origin <branch>`                                           |
-| `rebase-onto-base`     | the stacking tool's restack, else `git rebase <sync.baseRef>`                 |
-| `blocked`              | stop                                                                          |
+| `sync.action`          | What to run                                                   |
+| ---------------------- | ------------------------------------------------------------- |
+| `none`                 | nothing                                                       |
+| `fast-forward`         | `git merge --ff-only <sync.upstreamRef>` — no merge commit    |
+| `rebase-onto-upstream` | `git pull --rebase origin <branch>`                           |
+| `rebase-onto-base`     | the stacking tool's restack, else `git rebase <sync.baseRef>` |
+| `blocked`              | stop                                                          |
 
 **Stop the moment syncing fails.** A `blocked` action, a non-empty `blockers` list, a conflicted rebase, a restack error — all mean this head will need reconciling with the remote later, and every commit you add first makes that worse. Abort a failed rebase so the worktree is exactly as you found it, then report and wait.
 
@@ -122,7 +124,25 @@ Assign a disposition to every open item, with a one-line reason, **before** chan
 Record `git rev-parse HEAD` **before your first commit** — step 6 needs it as `--since`.
 
 - `hasSuggestion` threads carry the reviewer's exact patch — apply it verbatim when it is right. Rewriting it is a **divergence**: note it in the reply and carry the thread id into step 6.
-- Verify each touched package with the repo's documented single verification command (in gamma: `cd packages/<pkg> && yarn lint:fix`). For Terraform roots, `fmt` proves formatting, not behaviour — attempt `terraform plan` (with `-var-file=staging.tfvars` for `packages/server/terraform/daytona`) so the change is actually verifiable. A root that cannot init or lacks credentials stays unverified, which step 6 treats as a stop.
+- Ask the classifier what can check each path, then run those commands:
+
+  ```bash
+  "$S/verify.sh" --paths '<json array of the files you changed>'
+  ```
+
+  It returns a deduped `commands` list and, crucially, `unverified` — the behaviour-bearing paths nothing can check. Feed that straight into step 6. Deciding for yourself that a change "did not really need checking" is the rationalization the gate exists to catch, so let the classifier decide and run every command it names.
+
+  Repository instructions take priority. If they specify a checker for a path, use it instead of the generic returned command.
+
+  | Kind                                            | Checker                                                                                         |
+  | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+  | `terraform-root` (directory declares a backend) | `terraform fmt -check` + `terraform plan`                                                       |
+  | `terraform-module` (no backend)                 | `terraform fmt -check` + `terraform init -backend=false` + `terraform validate` + `tflint`      |
+  | `shell`                                         | `shellcheck` + `shfmt -d`                                                                       |
+  | `shell-template` (`*.sh.tftpl`)                 | Replace `${…}` values. Run `shellcheck --shell=bash -`.                                         |
+  | `js-package`                                    | Run each non-mutating `check`, `typecheck`, `lint`, and `test` script that the package defines. |
+  | `docs`                                          | Read the result. Documentation is not behavior-bearing.                                         |
+
 - Stage by explicit path — `git add <file> …` — so the user's other working-tree changes stay out. Re-run preflight before committing and confirm the staged set is exactly the files you edited.
 - Commit in the repo's message convention. One commit per concern; each thread's reply cites the sha that contains its fix.
 
@@ -135,23 +155,29 @@ Nothing has left the machine yet. This is the last reversible moment: a push sta
 ```bash
 "$S/risk.sh" --since <sha-from-step-5> \
   --changed-files '<collect.sh .changedFiles>' \
-  --verification <passed|failed|none> \
-  [--diverged <thread-id,...>]
+  --verification <passed|failed> \
+  --unverified '<verify.sh .unverified, comma-separated>' \
+  [--diverged <thread-id,...>] \
+  [--tripwire-glob '<repo-defined glob>']...
 ```
+
+Read the repository instructions before you run `risk.sh`. Pass each repository-specific critical path with `--tripwire-glob`.
+
+`--verification` reports only whether the checks that ran passed. Which paths _had_ no checker comes from `verify.sh`, not from your own read of the situation. Waive a genuinely uncheckable path with `--accept-unverified <glob>` and say so in the report.
 
 The verdict is mechanical — `high` iff a hard trigger fired. Size never stops a push on its own; it is reported. Do not talk yourself past a trigger, and do not re-run with softer inputs to get a friendlier verdict.
 
-| `level`    | Action                                                     |
-| ---------- | ---------------------------------------------------------- |
-| `low`      | `git push`, carry the verdict into the report               |
-| `elevated` | `git push`, and name the size notes in the report           |
-| `high`     | **stop before pushing** — ask                               |
+| `level`    | Action                                            |
+| ---------- | ------------------------------------------------- |
+| `low`      | `git push`, carry the verdict into the report     |
+| `elevated` | `git push`, and name the size notes in the report |
+| `high`     | **stop before pushing** — ask                     |
 
 On `high`, push nothing, reply to nothing, resolve nothing. Present the triggers and ask whether the user wants independent review of your changes, offering:
 
 - `/codex:adversarial-review --base <sha-from-step-5> --background`
 - `/security-review` — when the batch touches auth, secrets, IAM, or `security.md`
-- the `code-review` skill — note that its `docs/agents/issue-tracker.md` prerequisite is missing in gamma, so it needs setup first
+- the `code-review` skill, when the repository has its required files
 - push anyway
 
 Because the gate sits after committing, `--base <sha-from-step-5>` scopes any reviewer to exactly your own work. Findings come back through the same four dispositions. **The gate re-arms at most once** — a second `high` verdict stops and reports rather than looping.
@@ -171,6 +197,18 @@ Push guardrails:
 - On a stacked branch, push this one plainly and **report** children needing restack rather than restacking them.
 
 ### 7. Close the loops
+
+**Close mode only — the mapping stage.** In Address mode you know which commit fixed which thread. Here you are inferring it, so build the mapping and get it confirmed before anything posts.
+
+For each unresolved thread, match its `path` against the files touched by each candidate commit (`git log <base>..HEAD --name-only`). Present the proposal and wait:
+
+```
+#123  src/api/client.ts          →  a1b2c3d "handle empty responses"
+#123  infra/network/main.tf      →  ambiguous: 2 commits touch this file
+#123  docs/configuration.md      →  no commit touches this path
+```
+
+Post only the confirmed rows. Ambiguous and unmatched threads are listed and left alone — a wrong guess puts a false `Addressed` claim on a colleague's thread, and path matching is a heuristic, not knowledge. `respond.sh` still refuses any commit GitHub cannot place in the PR, so a bad mapping fails closed rather than posting a lie.
 
 ```bash
 # Apply — fixed in a commit
@@ -207,7 +245,7 @@ One message. No preamble, no recap of the diff, no narration of steps taken. Lea
 ## Stack
 | PR | branch | unresolved | needs you | review |
 |----|--------|-----------|-----------|--------|
-| #<n> | <head> | 2 | 2 | changes requested (dinedal) |
+| #<n> | <head> | 2 | 2 | changes requested (<reviewer>) |
 | → #<n> | <head> | 1 | 0 | approved |
 
 ## Risk — not pushed
@@ -240,4 +278,6 @@ Base · how the worktree synced · what verified each touched root/package · st
 Reply `post` to send the pushback drafts.
 ```
 
-Rules: omit empty sections — `## Risk` appears only when the verdict is `high` or a self-repair happened, and its "not pushed" title drops once the user has chosen to push. Mark the target PR with `→` in the stack table, and include the table only when the stack has more than one PR. Every claim names file, line, and what you checked — no thread is called handled without saying how. In Status mode, only the stack table, the outstanding items, and State apply.
+Rules: omit empty sections — `## Risk` appears only when the verdict is `high` or a self-repair happened, and its "not pushed" title drops once the user has chosen to push. Mark the target PR with `→` in the stack table, and include the table only when the stack has more than one PR. Every claim names file, line, and what you checked — no thread is called handled without saying how.
+
+In **Status** mode only the stack table, the outstanding items, and State apply. In **Close** mode the mapping proposal replaces `## Needs your call`, and unmatched or ambiguous threads are listed there.

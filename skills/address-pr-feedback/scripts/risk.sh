@@ -9,13 +9,14 @@
 # Usage:
 #   risk.sh --since <sha-before-my-commits>
 #           --changed-files '<json array from collect.sh .changedFiles>'
-#           --verification <passed|failed|none>
+#           --verification <passed|failed>
+#           [--unverified <path,...>]     (from verify.sh .unverified)
 #           [--diverged <thread-id,...>]
 #           [--tripwire-glob <glob>]      (repeatable, adds to defaults)
 #           [--accept-unverified <glob>]  (repeatable)
 set -euo pipefail
 
-since='' changed_files='[]' verification='' diverged=''
+since='' changed_files='[]' verification='' diverged='' unverified_in=''
 extra_tripwires=() accept_unverified=()
 
 while [[ $# -gt 0 ]]; do
@@ -23,6 +24,7 @@ while [[ $# -gt 0 ]]; do
 	--since) since="$2" && shift 2 ;;
 	--changed-files) changed_files="$2" && shift 2 ;;
 	--verification) verification="$2" && shift 2 ;;
+	--unverified) unverified_in="$2" && shift 2 ;;
 	--diverged) diverged="$2" && shift 2 ;;
 	--tripwire-glob) extra_tripwires+=("$2") && shift 2 ;;
 	--accept-unverified) accept_unverified+=("$2") && shift 2 ;;
@@ -35,9 +37,9 @@ done
 	exit 2
 }
 case "$verification" in
-passed | failed | none) ;;
+passed | failed) ;;
 *)
-	echo >&2 "risk.sh: --verification must be passed, failed, or none"
+	echo >&2 "risk.sh: --verification must be passed or failed (name uncheckable paths with --unverified)"
 	exit 2
 	;;
 esac
@@ -46,14 +48,13 @@ git rev-parse --verify --quiet "${since}^{commit}" >/dev/null || {
 	exit 1
 }
 
-# Paths the repo itself documents as load-bearing. Kept in sync with the
-# repo's own conventions rather than forming a parallel taxonomy.
+# Common load-bearing paths. Add repository-specific paths with
+# --tripwire-glob.
 tripwires=(
 	'*/generated/*' 'generated/*' '*.gen.ts'
-	'packages/server/src/data-deletion/s3-coverage/s3-bucket-registry.ts'
 	'security.md' '*/security.md'
-	'packages/server/src/public-api/openapi.yaml'
-	'*OPENAPI-CHANGELOG.md'
+	'openapi.yaml' 'openapi.yml' '*/openapi.yaml' '*/openapi.yml'
+	'*OPENAPI-CHANGELOG.md' '*openapi-changelog.md'
 	'*/migrations/*' 'migrations/*'
 	'.github/workflows/*'
 	'yarn.lock' 'bun.lock' 'pnpm-lock.yaml' 'package-lock.json'
@@ -94,10 +95,17 @@ for f in ${touched+"${touched[@]}"}; do
 	is_docs "$f" || behavior+=("$f")
 done
 
-# A behaviour-bearing file the caller explicitly accepts as unverifiable does
-# not count toward the unverified trigger.
+# Which behaviour-bearing files nothing could check. verify.sh decides this
+# mechanically; a caller may waive specific paths with --accept-unverified.
+declare -a named=()
+if [[ -n "$unverified_in" ]]; then
+	IFS=',' read -r -a named <<<"$unverified_in"
+fi
+
 unverified=()
-for f in ${behavior+"${behavior[@]}"}; do
+for f in ${named+"${named[@]}"}; do
+	f="${f# }"
+	[[ -z "$f" ]] && continue
 	if [[ ${#accept_unverified[@]} -gt 0 ]] && matches_any "$f" "${accept_unverified[@]}"; then
 		continue
 	fi
@@ -137,7 +145,7 @@ jq -n \
         + (if .verification == "failed"
              then ["the repo verification command failed"]
              else [] end)
-        + (if .verification == "none" and ($unverified | length) > 0
+        + (if ($unverified | length) > 0
              then ["\($unverified | length) behaviour-bearing file(s) changed with nothing able to verify them: \($unverified | join(", "))"]
              else [] end)
         + (if (.tripwirePaths | length) > 0
@@ -159,7 +167,7 @@ jq -n \
   | . + {
       level: (
         if (.hardTriggers | length) > 0 then "high"
-        elif (.sizeNotes | length) > 0 or .verification == "none" then "elevated"
+        elif (.sizeNotes | length) > 0 then "elevated"
         else "low"
         end
       )
