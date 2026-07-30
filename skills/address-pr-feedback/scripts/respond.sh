@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Reply to one review thread, then resolve it. Resolve only happens if the
-# reply lands.
+# Reply to one review thread. This script never resolves it; resolution is an
+# independent state change handled by resolve.sh.
 #
 # A cited SHA is proved to be IN THIS PR against GitHub, not against local
 # remote-tracking refs: a stale tracking branch can still contain a commit the
@@ -9,13 +9,13 @@
 #
 # Usage:
 #   respond.sh --repo <owner/repo> --pr <n> --thread <PRRT_id>
-#              [--sha <sha>] [--note <text>] [--resolve] [--dry-run]
+#              [--sha <sha>] [--note <text>] [--dry-run]
 #
 # Body is built for you: "Addressed <sha>" or "Addressed <sha> — <note>" or "<note>".
 # The SHA is emitted bare so GitHub auto-links it.
 set -euo pipefail
 
-repo='' pr='' thread='' sha='' note='' resolve=0 dry=0
+repo='' pr='' thread='' sha='' note='' dry=0
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -24,7 +24,6 @@ while [[ $# -gt 0 ]]; do
 	--thread) thread="$2" && shift 2 ;;
 	--sha) sha="$2" && shift 2 ;;
 	--note) note="$2" && shift 2 ;;
-	--resolve) resolve=1 && shift ;;
 	--dry-run) dry=1 && shift ;;
 	*) echo >&2 "respond.sh: unknown argument: $1" && exit 2 ;;
 	esac
@@ -83,7 +82,7 @@ else
 fi
 
 if [[ "$dry" == 1 ]]; then
-	printf '%s\treply=%s\tresolve=%s\n' "$thread" "$body" "$resolve"
+	printf '%s\treply=%s\n' "$thread" "$body"
 	exit 0
 fi
 
@@ -94,11 +93,3 @@ gh api graphql -F threadId="$thread" -F body="$body" -f query='
       comment{url}
     }
   }' --jq '.data.addPullRequestReviewThreadReply.comment.url'
-
-if [[ "$resolve" == 1 ]]; then
-	# shellcheck disable=SC2016  # GraphQL variable
-	gh api graphql -F threadId="$thread" -f query='
-    mutation($threadId:ID!){
-      resolveReviewThread(input:{threadId:$threadId}){ thread{ id isResolved } }
-    }' --jq '"resolved=" + (.data.resolveReviewThread.thread.isResolved|tostring)'
-fi

@@ -126,7 +126,10 @@ jq -n \
           awaitingReviewer: ((.lastComment.nodes[0].author.login // "") == $me),
           commentsTruncated: (.comments.pageInfo.hasNextPage // false),
           hasSuggestion: ([.comments.nodes[].body | select(test("```suggestion"))] | length > 0),
-          comments: [.comments.nodes[] | {author: .author.login, body}]
+          comments: [
+            .comments.nodes[]
+            | {author: .author.login, createdAt, url, body}
+          ]
         }
     ],
     # Any incomplete connection means a triage decision could rest on data

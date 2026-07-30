@@ -9,7 +9,8 @@
 # Usage:
 #   risk.sh --since <sha-before-my-commits>
 #           --changed-files '<json array from collect.sh .changedFiles>'
-#           --verification <passed|failed>
+#           --verification <passed|failed|out-of-batch-findings>
+#           [--verification-finding <text>]  (repeatable)
 #           [--unverified <path,...>]     (from verify.sh .unverified)
 #           [--diverged <thread-id,...>]
 #           [--tripwire-glob <glob>]      (repeatable, adds to defaults)
@@ -17,13 +18,14 @@
 set -euo pipefail
 
 since='' changed_files='[]' verification='' diverged='' unverified_in=''
-extra_tripwires=() accept_unverified=()
+extra_tripwires=() accept_unverified=() verification_findings=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--since) since="$2" && shift 2 ;;
 	--changed-files) changed_files="$2" && shift 2 ;;
 	--verification) verification="$2" && shift 2 ;;
+	--verification-finding) verification_findings+=("$2") && shift 2 ;;
 	--unverified) unverified_in="$2" && shift 2 ;;
 	--diverged) diverged="$2" && shift 2 ;;
 	--tripwire-glob) extra_tripwires+=("$2") && shift 2 ;;
@@ -37,12 +39,20 @@ done
 	exit 2
 }
 case "$verification" in
-passed | failed) ;;
+passed | failed | out-of-batch-findings) ;;
 *)
-	echo >&2 "risk.sh: --verification must be passed or failed (name uncheckable paths with --unverified)"
+	echo >&2 "risk.sh: --verification must be passed, failed, or out-of-batch-findings"
 	exit 2
 	;;
 esac
+if [[ "$verification" == "out-of-batch-findings" && ${#verification_findings[@]} -eq 0 ]]; then
+	echo >&2 "risk.sh: out-of-batch-findings requires at least one --verification-finding"
+	exit 2
+fi
+if [[ "$verification" != "out-of-batch-findings" && ${#verification_findings[@]} -gt 0 ]]; then
+	echo >&2 "risk.sh: --verification-finding requires --verification out-of-batch-findings"
+	exit 2
+fi
 git rev-parse --verify --quiet "${since}^{commit}" >/dev/null || {
 	echo >&2 "risk.sh: $since is not a commit in this repo"
 	exit 1
@@ -123,6 +133,7 @@ jq -n \
 	--argjson tripped "$(arr ${tripped+"${tripped[@]}"})" \
 	--argjson behavior "$(arr ${behavior+"${behavior[@]}"})" \
 	--argjson unverified "$(arr ${unverified+"${unverified[@]}"})" \
+	--argjson verificationFindings "$(arr ${verification_findings+"${verification_findings[@]}"})" \
 	'
   {
     since: $since,
@@ -134,6 +145,7 @@ jq -n \
     tripwirePaths: $tripped,
     behaviorBearing: $behavior,
     verification: $verification,
+    verificationFindings: $verificationFindings,
     divergedThreads: ($diverged | split(",") | map(select(length > 0)))
   }
   | . + {
@@ -167,7 +179,7 @@ jq -n \
   | . + {
       level: (
         if (.hardTriggers | length) > 0 then "high"
-        elif (.sizeNotes | length) > 0 then "elevated"
+        elif (.sizeNotes | length) > 0 or (.verificationFindings | length) > 0 then "elevated"
         else "low"
         end
       )

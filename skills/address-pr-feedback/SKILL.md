@@ -9,7 +9,7 @@ Three modes. Pick one before you do anything, and say which mode you picked.
 
 **Status** — the user asked a question: what is outstanding, where does the stack stand, is anything blocking. Read-only. Run steps 1–2, print the report, stop. No commits, no replies, no resolves, no rebase.
 
-**Close** — the user fixed threads themselves and wants the bookkeeping done: "close the loops", "I fixed these", "mark these addressed". Runs steps 1–2, the mapping stage in step 7, then steps 7–8. Never edits, commits, rebases, or pushes, so it needs no risk gate.
+**Close** — the user fixed threads themselves and wants the bookkeeping done: "close the loops", "I fixed these", "mark these addressed", "mark resolved". Runs steps 1–2, the resolution stage in step 7, then step 8. Verify that the current PR satisfies each target thread, then resolve it without posting a reply. Never edits, commits, rebases, pushes, or waits for reply approval.
 
 **Address** — the user explicitly asked to address, handle, fix, or clear feedback. Runs every step.
 
@@ -19,15 +19,14 @@ Most review feedback needs the author's judgment, so **Close** is the common cas
 
 ## Standing authorization
 
-**In Address mode only**, the user has pre-approved you to post, without asking:
+**In Address mode only**, the user has pre-approved these actions without another prompt:
 
-- `Addressed <sha>` replies on threads you actually fixed
-- factual "no longer applies" replies on **Stale** threads
-- resolving those threads
+- resolving verified **Stale** threads
+- resolving **Apply** threads after their fixes are pushed
 - re-requesting review
 - syncing the worktree onto the PR's base by rebase or fast-forward
 
-Everything a reviewer will read for its argument — rebuttals, disagreement, explanation of intent, PR description edits — is drafted in the report and posted only after the user approves.
+Resolution and reply are independent actions. Never require, draft, or post a reply merely to resolve a thread. Everything a reviewer will read — including `Addressed <sha>`, "no longer applies," rebuttals, explanations of intent, and PR description edits — is drafted in the report and posted only after the user approves. Resolve an eligible thread first; an optional reply must never gate it.
 
 **Rebase, never merge.** A merge commit needs approval every time. `git rebase`, `git pull --rebase`, and `git merge --ff-only` are the only integrations you run unattended.
 
@@ -46,7 +45,7 @@ Every thread lands in exactly one bucket. Before choosing, **verify**: read the 
 3. the fix stays inside the PR's changed files, and every file it touches is clean in the worktree — the user's uncommitted hunks and yours cannot be separated safely in one file
 4. you can verify the result, or it is prose whose correctness you just confirmed by reading
 
-**Stale** — the premise no longer holds: the code moved, the line is gone, or another thread already covers it. Reply with the evidence and resolve.
+**Stale** — no defensible work remains because the suggested, implied, or equivalent change is already present, the concern was removed, or another completed change made it moot. A moved line alone is not stale. Cite the current code or pushed commit that settles the concern, then resolve without replying.
 
 **Push back** — the claim is factually wrong, or the remedy costs more than the defect it removes. Draft the rebuttal and leave the thread unresolved and unanswered. Write it to the colleague who will read it: open with the evidence that settles it, cite the file, line, or doc that shows it, keep it to a few sentences, and leave the door open where the point is arguable.
 
@@ -54,7 +53,7 @@ Every thread lands in exactly one bucket. Before choosing, **verify**: read the 
 
 When a thread fails an **Apply** condition, it is **Escalate** — not a best guess. Changing code to satisfy a claim you did not verify is the failure this skill exists to prevent; so is a fix that quietly grows past what the thread asked for.
 
-Threads where the user already replied last (`awaitingReviewer: true`) are the reviewer's move. Leave them untouched and list them in the report.
+Threads where the user already replied last (`awaitingReviewer: true`) are the reviewer's move unless the code now proves them **Stale**. Resolve verified Stale threads; leave every other awaiting-reviewer thread untouched and list it in the report.
 
 ## Steps
 
@@ -70,7 +69,7 @@ S="<address-pr-feedback-skill-directory>/scripts"
 "$S/collect.sh" [pr-number|url|branch]
 ```
 
-Read-only. Defaults to the current branch's PR. Emits PR state, `repo`, `changedFiles`, every review thread with `id`/`isResolved`/`isOutdated`/`awaitingReviewer`/`hasSuggestion`, each reviewer's latest review state, review summary bodies, top-level comments, and `stack.tool` when the user has posted a stacking-tool comment.
+Read-only. Defaults to the current branch's PR. Emits PR state, `repo`, `changedFiles`, every review thread with `id`/`isResolved`/`isOutdated`/`awaitingReviewer`/`hasSuggestion` and its chronological comment bodies, authors, dates, and links, each reviewer's latest review state, review summary bodies, top-level comments, and `stack.tool` when the user has posted a stacking-tool comment.
 
 Two fields gate everything downstream:
 
@@ -98,10 +97,13 @@ You act on the target PR only. Sibling PRs are situational awareness: each lives
 **A stack comment on the PR means a tool owns this branch.** Load that tool's skill before any branch operation and use its restack command; the tool holds parent metadata a bare `git rebase` leaves stale. When no skill matches, say so and use the tool's own CLI rather than reaching around it. Preflight reports `localStackTool` from repo config as an independent reading — when the two disagree, that is a blocker: the tool is not initialized where you are standing.
 
 ```bash
-"$S/preflight.sh" --head <headRefName> --base <baseRefName>
+git fetch origin &&
+  "$S/preflight.sh" --fetched --head <headRefName> --base <baseRefName>
 ```
 
-Fetches origin, then reports gaps to base and upstream, `rebaseable`, `blockers`, and a structured `sync` object. It returns an **action name and ref fields, never a command string** — ref names are attacker-controlled on a fork PR and git permits `$`, `(`, and `)` in them. Refs outside a safe charset are refused outright and land in `unsafeRefNames`.
+Run this as one shell list so preflight runs only after `git fetch origin` exits successfully. Keep the fetch as a top-level command: approval systems can authorize `git fetch`, but cannot see a fetch hidden inside the skill script. If fetch needs approval, request it for `git fetch`; do not elevate `preflight.sh`.
+
+`preflight.sh` is read-only. `--fetched` confirms that the immediately preceding fetch succeeded; without it, the script fails closed. It reports gaps to base and upstream, `rebaseable`, `blockers`, and a structured `sync` object. It returns an **action name and ref fields, never a command string** — ref names are attacker-controlled on a fork PR and git permits `$`, `(`, and `)` in them. Refs outside a safe charset are refused outright and land in `unsafeRefNames`.
 
 | `sync.action`          | What to run                                                   |
 | ---------------------- | ------------------------------------------------------------- |
@@ -118,6 +120,14 @@ Uncommitted work in unrelated files is fine while nothing needs syncing. Once a 
 ### 4. Triage before editing
 
 Assign a disposition to every open item, with a one-line reason, **before** changing any file. Triaging as you fix biases you toward fixing.
+
+After the complete triage, close every verified **Stale** thread immediately:
+
+```bash
+"$S/resolve.sh" --thread <PRRT_id>
+```
+
+Do not wait for edits, a risk verdict, a reply draft, or the final report. A Stale determination must rest on code already visible in the PR; if unpublished work is still required, the thread is **Apply**, not Stale. Re-run `collect.sh` after the stale batch and confirm each thread is resolved. A resolve API failure belongs in the final report, but does not block unrelated Apply work.
 
 ### 5. Land the Apply set
 
@@ -143,7 +153,7 @@ Record `git rev-parse HEAD` **before your first commit** — step 6 needs it as 
   | `js-package`                                    | Run each non-mutating `check`, `typecheck`, `lint`, and `test` script that the package defines. |
   | `docs`                                          | Read the result. Documentation is not behavior-bearing.                                         |
 
-- Stage by explicit path — `git add <file> …` — so the user's other working-tree changes stay out. Re-run preflight before committing and confirm the staged set is exactly the files you edited.
+- Stage by explicit path — `git add <file> …` — so the user's other working-tree changes stay out. Re-run the fetch-and-preflight shell list before committing and confirm the staged set is exactly the files you edited.
 - Commit in the repo's message convention. One commit per concern; each thread's reply cites the sha that contains its fix.
 
 **Rewrite history before you cite it, never after.** Step 3 is where rebasing and restacking belong — no sha is published yet, so rewriting there costs nothing. From your first commit onward the branch is append-only: no amend, no rebase, no force-push, because the replies you are about to post cite shas.
@@ -155,25 +165,32 @@ Nothing has left the machine yet. This is the last reversible moment: a push sta
 ```bash
 "$S/risk.sh" --since <sha-from-step-5> \
   --changed-files '<collect.sh .changedFiles>' \
-  --verification <passed|failed> \
+  --verification <passed|failed|out-of-batch-findings> \
   --unverified '<verify.sh .unverified, comma-separated>' \
+  [--verification-finding '<command>: <diagnostic> — <why this batch did not cause it>']... \
   [--diverged <thread-id,...>] \
   [--tripwire-glob '<repo-defined glob>']...
 ```
 
 Read the repository instructions before you run `risk.sh`. Pass each repository-specific critical path with `--tripwire-glob`.
 
-`--verification` reports only whether the checks that ran passed. Which paths _had_ no checker comes from `verify.sh`, not from your own read of the situation. Waive a genuinely uncheckable path with `--accept-unverified <glob>` and say so in the report.
+Classify verification without widening the feedback fix:
 
-The verdict is mechanical — `high` iff a hard trigger fired. Size never stops a push on its own; it is reported. Do not talk yourself past a trigger, and do not re-run with softer inputs to get a friendlier verdict.
+- **`passed`** — every required checker passed.
+- **`out-of-batch-findings`** — checks that exercise the changed behavior passed, and every remaining non-zero diagnostic names code outside `git diff --unified=0 <sha-from-step-5>..HEAD`. Confirm that this batch changed neither the diagnostic location nor the checker configuration or dependency that produced it. Pass each exact diagnostic and that evidence with `--verification-finding`. Call a finding *pre-existing* only after reproducing it on the PR base; otherwise call it *out of batch*.
+- **`failed`** — a diagnostic reaches changed behavior, attribution is unclear, the checker crashed or stopped before complete diagnostics, or a required check did not run.
 
-| `level`    | Action                                            |
-| ---------- | ------------------------------------------------- |
-| `low`      | `git push`, carry the verdict into the report     |
-| `elevated` | `git push`, and name the size notes in the report |
-| `high`     | **stop before pushing** — ask                     |
+Do not change unrelated code to turn `out-of-batch-findings` green. Continue the workflow and report those findings at the end. Which paths _had_ no checker still comes from `verify.sh`, not from your own read of the situation. Waive a genuinely uncheckable path with `--accept-unverified <glob>` and say so in the report.
 
-On `high`, push nothing, reply to nothing, resolve nothing. Present the triggers and ask whether the user wants independent review of your changes, offering:
+The verdict is mechanical — `high` iff a hard trigger fired. Out-of-batch findings and size notes produce `elevated`, which does not stop the push. Do not talk yourself past a trigger, and do not re-run with softer inputs to get a friendlier verdict.
+
+| `level`    | Action                                                              |
+| ---------- | ------------------------------------------------------------------- |
+| `low`      | `git push`, carry the verdict into the report                       |
+| `elevated` | `git push`; report size notes and out-of-batch findings at the end |
+| `high`     | **stop before pushing** — ask                                       |
+
+On `high`, push no new commits and do not reply to or resolve Apply threads. Stale threads closed in step 4 stay closed. Present the triggers and ask whether the user wants independent review of your changes, offering:
 
 - `/codex:adversarial-review --base <sha-from-step-5> --background`
 - `/security-review` — when the batch touches auth, secrets, IAM, or `security.md`
@@ -198,27 +215,30 @@ Push guardrails:
 
 ### 7. Close the loops
 
-**Close mode only — the mapping stage.** In Address mode you know which commit fixed which thread. Here you are inferring it, so build the mapping and get it confirmed before anything posts.
+**Address mode:** verified Stale threads are already closed. After the push, resolve each Apply thread whose fix is now present in the PR:
 
-For each unresolved thread, match its `path` against the files touched by each candidate commit (`git log <base>..HEAD --name-only`). Present the proposal and wait:
-
+```bash
+"$S/resolve.sh" --thread <PRRT_id>
 ```
+
+**Close mode:** verify the current PR code against each thread the user identified, resolve each satisfied thread with `resolve.sh`, and leave unsatisfied or ambiguous threads open. The user's resolve instruction authorizes this state change. Do not draft a reply, build a commit mapping, or ask for approval first.
+
+Only if the user separately asks for `Addressed <sha>` replies, map each thread to a commit and present the mapping for approval:
+
+```text
 #123  src/api/client.ts          →  a1b2c3d "handle empty responses"
 #123  infra/network/main.tf      →  ambiguous: 2 commits touch this file
 #123  docs/configuration.md      →  no commit touches this path
 ```
 
-Post only the confirmed rows. Ambiguous and unmatched threads are listed and left alone — a wrong guess puts a false `Addressed` claim on a colleague's thread, and path matching is a heuristic, not knowledge. `respond.sh` still refuses any commit GitHub cannot place in the PR, so a bad mapping fails closed rather than posting a lie.
+Path matching (`git log <base>..HEAD --name-only`) is only a proposal. Post only confirmed reply mappings after approval. Ambiguous and unmatched mappings stay unposted. `respond.sh` refuses any commit GitHub cannot place in the PR, so a bad mapping fails closed rather than posting a false claim.
 
 ```bash
-# Apply — fixed in a commit
-"$S/respond.sh" --repo <owner/repo> --pr <n> --thread <PRRT_id> --sha <sha> [--note "<one sentence>"] --resolve
-
-# Stale — no code change
-"$S/respond.sh" --repo <owner/repo> --pr <n> --thread <PRRT_id> --note "<why it no longer applies>" --resolve
+"$S/respond.sh" --repo <owner/repo> --pr <n> --thread <PRRT_id> \
+  --sha <sha> [--note "<one sentence>"]
 ```
 
-The script builds the body, strips backticks so GitHub auto-links the sha, and **proves against GitHub that the cited commit is the PR head or an ancestor of it** before posting — "contained by some remote branch" never meant "present in this PR". It resolves only after the reply lands. Add `--dry-run` to preview.
+The script builds the reply body, strips backticks so GitHub auto-links the sha, and **proves against GitHub that the cited commit is the PR head or an ancestor of it** before posting — "contained by some remote branch" never meant "present in this PR". It never resolves a thread. Add `--dry-run` to preview.
 
 Use `--note` when the fix diverges from what the reviewer suggested. Resolve only when a thread's feedback is fully addressed; a thread with one fixed point and one escalated point stays open.
 
@@ -259,8 +279,12 @@ Independent review? /codex:adversarial-review --base <sha> · /security-review �
    Fork: <A> vs <B> → recommend <one, why>
 
 ## Pushback drafts (not posted)
-1. **<file>:<line>** — <claim> · <link>
+1. **<file>:<line> · @<reviewer>** · <thread link>
+   Context:
+   > @<reviewer>: <root review comment>
+   > @<author>: <later comment that changes how the root comment should be read>
    Wrong because: <evidence>
+   Draft reply:
    > <exact reply text>
 
 ## Landed — <sha>
@@ -272,12 +296,17 @@ Independent review? /codex:adversarial-review --base <sha> · /security-review �
 ## Waiting on reviewer
 - <file>:<line> — you replied <date>
 
+## Verification findings
+- `<command>` — <exact diagnostic> · outside this batch because <diff evidence>
+
 ## State
 Base · how the worktree synced · what verified each touched root/package · stacking tool · children needing restack · conflicts · failures
 
 Reply `post` to send the pushback drafts.
 ```
 
-Rules: omit empty sections — `## Risk` appears only when the verdict is `high` or a self-repair happened, and its "not pushed" title drops once the user has chosen to push. Mark the target PR with `→` in the stack table, and include the table only when the stack has more than one PR. Every claim names file, line, and what you checked — no thread is called handled without saying how.
+Rules: omit empty sections — `## Risk` appears only when the verdict is `high` or a self-repair happened, and its "not pushed" title drops once the user has chosen to push. `## Verification findings` appears for `out-of-batch-findings` and does not ask for a decision. Mark the target PR with `→` in the stack table, and include the table only when the stack has more than one PR. Every claim names file, line, and what you checked — no thread is called handled without saying how.
 
-In **Status** mode only the stack table, the outstanding items, and State apply. In **Close** mode the mapping proposal replaces `## Needs your call`, and unmatched or ambiguous threads are listed there.
+For every drafted thread reply, show the root comment and each later comment that materially changes its meaning, in chronological order. Name each author and link the thread in the heading. Never present a detached reply quote that makes the user ask which comment it answers.
+
+In **Status** mode only the stack table, the outstanding items, and State apply. In **Close** mode list what was resolved and what remained open; include reply mappings only when the user separately asked for replies.

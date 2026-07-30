@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # Report whether THIS worktree can safely take new commits for a PR, and what
-# syncing it needs first. Touches remote-tracking refs only (git fetch); never
-# the index, the working tree, or any branch.
+# syncing it needs first. Read-only: the caller fetches remote-tracking refs
+# before invoking this script.
 #
 # Emits a STRUCTURED sync action, never a command string: ref names are
 # attacker-controlled input on a fork PR, and git permits '$', '(' and ')' in
 # them. Refs are validated here and passed as data, never as shell text.
 #
-# Usage: preflight.sh --head <pr-head-branch> --base <pr-base-branch> [--no-fetch]
+# Usage: preflight.sh --fetched --head <pr-head-branch> --base <pr-base-branch>
 set -euo pipefail
 
-head_branch='' base_branch='' do_fetch=1
+head_branch='' base_branch='' fetch_confirmed=false
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--head) head_branch="$2" && shift 2 ;;
 	--base) base_branch="$2" && shift 2 ;;
-	--no-fetch) do_fetch=0 && shift ;;
+	--fetched) fetch_confirmed=true && shift ;;
 	*) echo >&2 "preflight.sh: unknown argument: $1" && exit 2 ;;
 	esac
 done
@@ -42,13 +42,10 @@ detached=false
 [[ "$branch" == "HEAD" ]] && detached=true
 safe_ref "$branch" || unsafe_refs+=("$branch")
 
-# Fail closed: stale remote refs make every ahead/behind count a lie.
-fetch_ok=true
-if [[ "$do_fetch" == 1 ]]; then
-	git fetch --quiet origin 2>/dev/null || fetch_ok=false
-else
-	fetch_ok=false
-fi
+# Fail closed unless the caller confirms a successful, immediately preceding
+# fetch. Keep that fetch outside this script so approval systems can authorize
+# the git operation directly instead of treating it as a hidden side effect.
+fetch_ok=$fetch_confirmed
 
 in_progress=null
 if [[ -e "$gitdir/MERGE_HEAD" ]]; then
@@ -138,7 +135,7 @@ jq -n \
         + (if (.unsafeRefNames | length) > 0
              then ["ref name(s) outside the safe charset: \(.unsafeRefNames | join(", ")) — refuse to run git commands against these"]
              else [] end)
-        + (if .fetchOk | not then ["could not fetch origin — every ahead/behind count below is unverified"] else [] end)
+        + (if .fetchOk | not then ["origin fetch not confirmed — run git fetch origin, then rerun with --fetched"] else [] end)
         + (if .baseRefResolved | not then ["PR base \($base) does not resolve to a remote ref — the gap to base is unknown, not zero"] else [] end)
         + (if .inProgress != null then ["\(.inProgress) in progress — finish or abort it first"] else [] end)
         + (if .detached then ["HEAD is detached — the PR branch is not checked out here"] else [] end)
