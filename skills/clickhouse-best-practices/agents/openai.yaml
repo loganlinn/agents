@@ -1,0 +1,4 @@
+interface:
+  display_name: "ClickHouse Best Practices"
+  short_description: "Design and review reliable ClickHouse workloads"
+  default_prompt: "Use $clickhouse-best-practices to review this ClickHouse schema, query, or deployment and recommend verified improvements."
