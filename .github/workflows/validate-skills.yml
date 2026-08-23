@@ -1,0 +1,43 @@
+name: Validate Skills
+
+on:
+  pull_request:
+    paths:
+      - "skills/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "skills/**"
+
+# The validate script uses this to find changed skill directories via git diff
+# and as the fallback search root.
+env:
+  SKILLS_DIR: skills
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history is needed so git diff can compare against the base ref
+          fetch-depth: 0
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+        with:
+          # skills/mise.toml declares the skill-validator tool
+          # (go:github.com/agent-ecosystem/skill-validator/cmd/skill-validator)
+          working_directory: skills
+
+      - name: Validate changed skills
+        env:
+          # PRs diff against the base branch; pushes diff against the commit
+          # before the push. An unresolvable base (e.g. force push) makes the
+          # script fall back to validating all skills.
+          DIFF_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: bash .github/scripts/validate-skills.sh "$DIFF_BASE" "$SKILLS_DIR"
