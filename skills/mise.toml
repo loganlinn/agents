@@ -1,0 +1,12 @@
+[tools]
+"go:github.com/agent-ecosystem/skill-validator/cmd/skill-validator" = "latest"
+
+[tasks.check]
+usage = '''
+arg "[directory]" var=#true default="."
+'''
+run = '''
+{% for dir in usage.directory %}
+skill-validator check {{ dir }}
+{% endfor %}
+'''

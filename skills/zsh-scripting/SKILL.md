@@ -1,6 +1,7 @@
 ---
 name: zsh-scripting
-description: This skill should be used when the user asks to "write a zsh script", "convert bash to zsh", "use zsh idioms", "zsh parameter expansion", "zsh glob qualifiers", "zsh arrays", "zsh extended_glob", "zsh hooks (chpwd, precmd, preexec)", or works with `.zshrc`, `.zshenv`, ZLE widgets, completion scripts (`_*` files), or any `.zsh` file. Provides native Zsh expertise: parameter expansion flags, glob qualifiers, array operations, and idiomatic patterns that replace external utilities (grep/sed/awk/cut) with builtin syntax. For zsh plugin authoring (the Zsh Plugin Standard, $0 handling, PMSPEC, function naming, unload hooks), consult `references/zsh-plugin-standard.md`.
+description: |
+  This skill should be used when the user asks to "write a zsh script", "convert bash to zsh", "use zsh idioms", "zsh parameter expansion", "zsh glob qualifiers", "zsh arrays", "zsh extended_glob", "zsh hooks (chpwd, precmd, preexec)", or works with `.zshrc`, `.zshenv`, ZLE widgets, completion scripts (`_*` files), or any `.zsh` file. Provides native Zsh expertise: parameter expansion flags, glob qualifiers, array operations, and idiomatic patterns that replace external utilities (grep/sed/awk/cut) with builtin syntax. For zsh plugin authoring (the Zsh Plugin Standard, $0 handling, PMSPEC, function naming, unload hooks), consult `references/zsh-plugin-standard.md`.
 ---
 
 # Zsh Scripting Expert

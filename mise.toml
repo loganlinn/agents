@@ -1,0 +1,13 @@
+monorepo_root = true
+
+[env]
+_.path = ".env"
+
+[settings]
+experimental = true
+
+[monorepo]
+config_roots = ["*"]
+
+[tasks.test]
+depends = ["//...:check"]
