@@ -7,6 +7,6 @@ arg "[directory]" var=#true default="."
 '''
 run = '''
 {% for dir in usage.directory %}
-skill-validator check {{ dir }}
+skill-validator check --allow-dirs=agents {{ dir }}
 {% endfor %}
 '''
