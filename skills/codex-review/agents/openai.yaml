@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codex Review"
+  short_description: "Find actionable bugs in code changes and write structured findings to a file"
+  default_prompt: "Use $codex-review to review the requested code changes and write structured findings to review-result.json."
+policy:
+  allow_implicit_invocation: false
